@@ -10,19 +10,16 @@ package require registry	;#
 
 # DATA ========================================================================
 proc data_init {} {
-	# ::app 
-	set ::LISTapp_defs {
+	# ::app ::cfg  
+	array set ::app {
 		name varGUI
-		version 0.2
+		version 0.3
 		cols	{1 2 3 4 5 6 7 8 9 10 11 12}
 		rows	{--- Shift- Control- Alt-}
 	}
+	array set ::cfg {Log_app 1 Log_ena 1} 
 	set ::LISTtodo {
-"" "todo:"
-	"- auto-connect with serial port in config file"
-	"- (Mouse-)button for assigning entry to (Modifier-)Fn"
-	"- click on button in stead of (Modifier-)Fn"
-"" "Short manual:"
+"" "short manual:"
 	"The varGUI.ini file overrides the default application settings"
 	"  and contains the name of the last used .cfg file."
 	"A config file (.cfg) consists of three parts:"
@@ -36,75 +33,98 @@ proc data_init {} {
 	"  The button below the labels indicates the edited row:"
 	"    ---  is the first row, with plain Fn-key settings, "
 	"    Shift- Control- and Alt- for the other rows."
-	"Serial port connection is made by accepting in Config > Serial"
-	"Log settings are read by opening a .cfg file"
+"" 	"Serial port connection is made by accepting in Config > Serial"
+"" 	"Log file writing is started by Ok in Config > Logging"
+"" 	"Opening a .cfg file in File > Open with settings for Serial and"
+	"  Logging will also take care of the above"
+""	"Although the program is meant to be controlled by keyboard,"
+	"  some functionality can be done by mouse clicks."
+"" "todo:"
+	"- continue testing"
 	}
 	set ::LISTcfg_ser_defs {
-		{1 port      readonly {NONE}}
-		{2 baud_rate normal   {4800 9600 19200 38400 57600 115200}}
-		{3 parity    readonly {none even odd}}
-		{4 data_bits readonly {8}} 
-		{5 stop_bits readonly {1 2}}
+		{1 port      readonly {NONE} }
+		{2 baud_rate normal   {4800 9600 19200 38400 57600 115200} }
+		{3 parity    readonly {none even odd} }
+		{4 data_bits readonly {8} } 
+		{5 stop_bits readonly {1 2} }
 	}
-	array set ::app $::LISTapp_defs		;# array set aRapp $LISTapp_defs
-	set fname $::app(name).ini 
-	if {[file exists $fname]} {data_rd [fread $fname]}
-}
-proc data_rd {data} {
-	foreach line [split $data \n] {
-		if {"" eq $line} {continue}
-		if {"#" eq [string index $line 0]} {continue}
-		if {![string is list $line]} {continue}
-		set n [lindex $line 0]
-		set v [join [lrange $line 1 end] ]
-		if {[string is upper [string index $n 0] ]} {
-			if {"Ser_fh" == $n} {continue}
-			# Titled element names for ::cfg change \n into "visible"
-			set ::cfg($n) [string map {\n \\n} $v]
-		} {;# lowercase element names for ::app
-			set ::app($n) $v
-		}
-	}
-}
-proc data_wr {_arr} {	upvar $_arr arr;
-	if {![array exists arr]} {return ""}
-	foreach n [lsort -dict [array names arr]] {
-		# skip serial port file handle	
-		if {"Ser_fh" == $n} {continue}
-		# skip default Fn key text and empty message
-		if {[regexp {F(\d+),(\d)(.*)} $n -> c r m]} {
-			if {$m eq ""} {;# puts "?skip? ${->} c=$c r=$r m=$m"
-				if {[string match $arr($n) "-- F$c --"]} {continue}
-			} elseif {$m eq ",m" && $arr($n) eq ""} {continue}
-		}
-		append res $n\t[string map {\n \\n} $arr($n)]\n
-	};	return $res
-}
-proc filedo args {	;# https://wiki.tcl-lang.org/page/withOpenFile
-	if {[llength $args]<3} {
-		error {wrong # args: should be "filedo fh fname ?access? ?permissions? script"}
-	};	upvar 1 [lindex $args 0] fh
-	try {	open {*}[lrange $args 1 end-1]
-	} on ok fh {uplevel 1 [lindex $args end]
-	} finally {	catch {chan close $fh}
-	}
-}
-proc fappend {fname fdata {ext cfg}} {
-	if {[string first . $fname] < 0} {append fname .$ext}
-	filedo fh $fname a {chan puts $fh $fdata}	
-}
-proc fread {fname {ext cfg}} {
-	if {[string first . $fname] < 0} {append fname .$ext}
-	set res [filedo fh $fname r {chan read $fh}]
-}
-proc fwrite {fname fdata {ext cfg}} {
-	if {[string first . $fname] < 0} {append fname .$ext}
-	filedo fh $fname w {chan puts $fh $fdata}	
-}
 
-proc f_dir_name {_fname ext} {	upvar $_fname fname;
-	if {![info exists $_fname]} {set fname ./$::app(name).$ext}
-	list [file dirname $fname] [file tail $fname]
+	proc data_rd {_arr data} {	upvar $_arr arr;
+		foreach line [split $data \n] {
+			if {"" eq $line} {continue}
+			if {"#" eq [string index $line 0]} {continue}
+			if {![string is list $line]} {continue}
+			set n [lindex $line 0]
+			set v [join [lrange $line 1 end] ]
+			if {"Ser_fh" == $n} {continue}
+			# change \n in names into "visible" pattern
+			set arr($n) [string map {\n \\n} $v]
+		}
+	}
+	proc data_wr {_arr} {	upvar $_arr arr;
+		if {![array exists arr]} {return ""}
+		foreach n [lsort -dict [array names arr]] {
+			# skip serial port file handle	
+			if {"Ser_fh" == $n} {continue}
+			# skip default Fn key text and empty message
+			if {[regexp {F(\d+),(\d)(.*)} $n -> c r m]} {
+				if {$m eq ""} {;# puts "?skip? ${->} c=$c r=$r m=$m"
+					if {[string match $arr($n) "-- F$c --"]} {continue}
+				} elseif {$m eq ",m" && $arr($n) eq ""} {continue}
+			}
+			append res $n\t[string map {\n \\n} $arr($n)]\n
+		};	return $res
+	}
+	proc filedo args {	;# https://wiki.tcl-lang.org/page/withOpenFile
+		if {[llength $args]<3} {
+			error {wrong # args: should be "filedo fh fname ?access? ?permissions? script"}
+		};	upvar 1 [lindex $args 0] fh
+		try {	open {*}[lrange $args 1 end-1]
+		} on ok fh {uplevel 1 [lindex $args end]
+		} finally {	catch {chan close $fh}
+		}
+	}
+	proc fappend {fname fdata {ext cfg}} {
+		if {[string first . $fname] < 0} {append fname .$ext}
+		filedo fh $fname a {chan puts $fh $fdata}	
+	}
+	proc fread {fname {ext cfg}} {
+		if {[string first . $fname] < 0} {append fname .$ext}
+		set res [filedo fh $fname r {chan read $fh}]
+	}
+	proc fwrite {fname fdata {ext cfg}} {
+		if {[string first . $fname] < 0} {append fname .$ext}
+		filedo fh $fname w {chan puts $fh $fdata}	
+	}
+	proc f_dir_name {_fname ext} {	upvar $_fname fname;
+		if {![info exists $_fname]} {set fname ./$::app(name).$ext}
+		list [file dirname $fname] [file tail $fname]
+	}
+	proc log_time {} {	set t [clock milliseconds]
+		set f [expr {($t%1000+50)/10%100}];	set t [expr {$t/1000}]
+		set r [clock format $t -format %T],[format %02d $f];	# ex. 08:03:14,09
+	}
+	proc log_record {data {is_tx 0} } {
+		return [log_time][expr {$is_tx ? " > " : " < "}]$data
+	}
+	proc log_start {fname} {;#	puts $fname
+		if {[array names ::cfg Log_ena] eq ""} {return}
+		if {[array names ::cfg Log_app] eq ""} {return}
+		if {!$::cfg(Log_ena)} {return}
+		set dt [clock format [clock seconds] -format "%d/%m/%Y %T"]
+		set record "##### varGUI log started $dt #####\n"
+		if {$::cfg(Log_app)} {fappend $fname $record} {fwrite $fname $record}
+		set ::cfg(Logfile) $fname
+	}
+	proc log_append {record} {
+		if {[array names ::cfg Logfile] eq ""} {return}
+		if {[array names ::cfg Log_ena] eq ""} {return}
+		if {!$::cfg(Log_ena)} {return}
+		fappend $::cfg(Logfile) $record
+	}
+
+if {[file exists $::app(name).ini]} {data_rd ::app [fread $::app(name).ini]}
 }
 
 # GUI ============================================= see http://wiki.tcl.tk/2264
@@ -118,12 +138,24 @@ if 0 {	;# undocumented menu helper
 proc gui_init {} {
 	# Names of helper functions specific to the GUI start with _ 
 	proc _Fn_send {col mod} {
-		set line [join $::cfg(F$col,$mod,m)]					;#puts $line 
-		if {[string index $line end] eq "\n"} {xmit $line} {
+		set line [join $::cfg(F$col,$mod,m)]					;#puts $line
+		if {$line eq ""} {return} 
+		if {[string index $line end] eq "\n"} {Hwserial_transmit $line} {
 			.f.e delete 0 end;	.f.e insert end $line;	focus .f.e
 		}
 	}	
-	proc _history_insert {args} {;# proc _history_insert {line {out 0} }
+	proc _Fn_edit {col row x y} {
+		if {4 == $row} {switch -- $col 1 return 4 return}
+		tk_popup .popup [expr $x+30] $y 0;	update
+		if {[array names ::app Popup_value] ne ""} {
+			switch -- $::app(Popup_value) 0 {
+				set ::cfg(F$col,$row) "-- F$col --"
+				set ::cfg(F$col,$row,m) ""
+			}
+			unset ::app(Popup_value)
+		}
+	}
+	proc _history_insert {args} {
 		set line {*}[lrange $args 0 end-1]
 		set out [lindex $args end]
 		if {$out} {set tag txtout} {set tag txtin} 
@@ -165,6 +197,12 @@ proc gui_init {} {
 	# frame for window contents -----------------------------------------------
 	grid [ttk::frame .f -padding "1 1"] -row 0 -column 0 -sticky news
 
+	# popup menu on right mouseclick for Function keys
+	set m [menu .popup -tearoff 0]
+	$m add command -command "set ::app(Popup_value) 0" -label "default settings"
+# 	$m add command -command "set ::app(Popup_value) 1" -label "edit label"
+# 	$m add command -command "set ::app(Popup_value) 2" -label "edit message"
+
 	# Fn-key table, columns 1-12 scaling in width -----------------------------
 	# column headers: row with Fn names
 	set ::FnCOLS 0
@@ -180,17 +218,16 @@ proc gui_init {} {
 		grid .f.lbl$r,0 -row $r -column 0 -padx 5 -sticky nws
 		# Fn-keys with default texts and messages
 		foreach c $::app(cols) {
-			ttk::button .f.b$c,$r -textvar cfg(F$c,$r)
+			ttk::button .f.b$c,$r -textvar ::cfg(F$c,$r) \
+					-command [list _Fn_send $c $r]
 			grid .f.b$c,$r -sticky ew -column $c -row $r
 			set ::cfg(F$c,$r) "-- F$c --"
 			set ::cfg(F$c,$r,m) ""
-#			switch -- $r {
-#			1 {	bind . <F$c> [list _Fn_send $c $r]}
-#			}
 			if {1 == $r} {
 				bind . <F$c> [list _Fn_send $c $r]
 			} {	bind . <$hd\F$c> [list _Fn_send $c $r]
-			}
+			};#	.f.b$c,$r configure -command [list _Fn_send $c $r]
+			bind .f.b$c,$r <Button-3> "_Fn_edit $c $r %X %Y"
 		}
 	}
 	# todo: https://wiki.tcl-lang.org/page/console+platform+portability
@@ -231,14 +268,17 @@ proc gui_init {} {
 	$w.t tag configure txtout -foreground blue
 
 	# Use <Return> for sending the message
-	bind . <Return> {xmit [.f.e get]; .f.e delete 0 end; focus .f.e}
+	bind . <Return> {Hwserial_transmit [.f.e get]; .f.e delete 0 end;focus .f.e}
 	focus .f.e
+
+#	proc GUI_element {name el} {wm title [winfo toplevel $el] "$name > $el"}
+#	bind all <Enter> {GUI_element $app(name) %W}
 }
 
-proc menu_implement_functions {} {
-	# after a call to gui_init all sub menus have an alert box as a function
-	# the can be implemented with real actions by a new call to proc with the
-	# same name and different body
+proc menu_implement {} {
+	# after a call to gui_init all sub menus default to an alert box
+	# implementation with real actions is done by defining a proc with the
+	# same name as indicated in the alert box
 	# Names of helpers specific to a (sub)menu start with _ 
 
 	# menu file_* -------------------------------------------------------------
@@ -251,25 +291,31 @@ proc menu_implement_functions {} {
 			fwrite $fname [data_wr ::cfg]
 		}
 	}
-	proc file_exit {} {program_exit; exit}
-	proc file_new {} {    _file_save_app_and_cfg}
-	proc file_save {} {   _file_save_app_and_cfg}
+	proc file_exit {}    {program_exit; exit}
+	proc file_new {}     {_file_save_app_and_cfg}
+	proc file_save {}    {_file_save_app_and_cfg}
 	proc file_save_as {} {_file_save_app_and_cfg}
 	proc file_open {} {
 		lassign [f_dir_name ::app(cfg) cfg] fdir fname
 		set fname [tk_getOpenFile -filetypes {{{config files} {.cfg}}} \
 				-parent . -initialdir $fdir -initialfile $fname]
-		if {$fname ne ""} {
-			# assign function key labels and messages
-			data_rd [set ::app(cfg) $fname; fread $fname]
-			foreach n "[lsort -dict [array names ::cfg] ]" {
-				if {"F" eq [string index $n 0]
-				&&	"m" ne [string index $n end]} {
-					set key [string range $n 1 end]
-					.f.b$key configure -textvar ::cfg($n)
-				};# else {puts "name $n"}
+		if {"" eq $fname} {return}
+		set ::app(cfg) $fname
+		# assign function key labels and messages
+		data_rd ::cfg [fread $fname]
+		foreach n "[lsort -dict [array names ::cfg] ]" {
+			if {"F" eq [string index $n 0]
+			&&	"m" ne [string index $n end]} {
+				set key [string range $n 1 end]
+				.f.b$key configure -textvar ::cfg($n)
 			}
-			
+		}
+		if {[array names ::cfg Logfile] ne ""} {log_start $::cfg(Logfile)}
+		if {[array names ::cfg Ser_port] eq ""} {return}
+		if {[array names ::cfg Ser_set] eq ""} {return}
+		if {"NONE" ne $::cfg(Ser_port)} {
+			# connect with port settings callback 
+			Hwserial_connect $::cfg(Ser_port) $::cfg(Ser_set) Hwserial_rcv
 		}
 	}
 
@@ -284,7 +330,7 @@ proc menu_implement_functions {} {
 		}
 	}
 	proc _edit_fn_populate {_row} {	upvar $_row r
-		# store values, replace with values from new row, change sel-text
+		# store values, replace with values from new row, change sel-key text
 		_edit_fn_get $r
 		if {[llength $::app(rows)] < [incr r]} {set r 1}
 		foreach k $::app(cols) {	set w .keys.f.e$k
@@ -297,7 +343,7 @@ proc menu_implement_functions {} {
 	proc _edit_fn_ok {mod} {
 		# store values and quit menu
 		_edit_fn_get $mod
-		after 25 [destroy .keys]
+		destroy .keys
 	}
 	proc edit_fn_keys {} {
 		if {[winfo exists .keys]} {
@@ -377,14 +423,13 @@ proc menu_implement_functions {} {
 		set ::ports NONE;	# lappend ::ports [list [Hwserial]]
 		foreach port [Hwserial] {lappend ::ports $port}
 		if {![info exists ::cfg(Ser_port)]} {set ::cfg(Ser_port) NONE}
-		if {![info exists ::cfg(Ser_set)]} {set ::cfg(Ser_set) 115200,n,8,2}
+		if {![info exists ::cfg(Ser_set)]} {set ::cfg(Ser_set) 9600,n,8,2}
 		$w.port configure -values [lsort -unique [join $::ports]]
 		$w.port set $::cfg(Ser_port);
 		foreach r {1 2 3 4} v [split $::cfg(Ser_set) ,] {
 			set n [lindex $::LISTcfg_ser_defs $r 1]
 			$w.$n set $v
 		}
-# join [lsort [winfo children .term.f]] \n
 		wm resizable .term 0 0
 		focus $w.ok
 	}
@@ -397,15 +442,13 @@ proc menu_implement_functions {} {
 					-filetypes {{{log files} {.log .txt}}}]
 			if {"" ne $fname} {	set ::cfg(Logtmp) $fname			
 				.log.f.e delete 0 end;
-				.log.f.e insert end [file tail $fname]
+#				.log.f.e insert end [file tail $fname]
+				.log.f.e insert end $fname
 			}; return
 		}
 		4 {	if {"alternate" eq [.log.f.ena state]} {set ::cfg(Log_ena) 1}
 			if {"alternate" eq [.log.f.app state]} {set ::cfg(Log_app) 1}
-		#	set ::cfg(Logfile) $::cfg(Logtmp)	;# array names cfg Log*
-			if {[info procs log_start] ne ""} {
-				log_start $::cfg(Logtmp)
-			}
+			if {[info procs log_start] ne ""} {log_start $::cfg(Logtmp)	}
 		}
 		};	unset ::cfg(Logtmp); destroy .log
 	}
@@ -431,8 +474,9 @@ proc menu_implement_functions {} {
 			ttk::button $w.b$c -width 9 -text $t -command "_config_log_btn $c"
 			grid $w.b$c -padx 3 -pady 7 -rowspan 2 -row 1 -column $c
 		};
-		lassign [f_dir_name ::cfg(Logfile) log] fdir fname
-		.log.f.e insert end [set ::cfg(Logtmp) $fname]  
+		if {[array names ::cfg Logfile] eq ""} {set fname "./log/varGUI.log"} {
+			set fname $::cfg(Logfile) 
+		};	.log.f.e insert end [set ::cfg(Logtmp) $fname]  
 		wm resizable .log 0 0
 		focus $w.b1
 	}
@@ -443,7 +487,6 @@ proc menu_implement_functions {} {
 			wm attributes .about -topmost 1; return
 		}
 		toplevel .about;	set w .about
-		# wm title .about "About $::app(name)"
 
 		# use pack for assembling scrollbar and about text in a frame:
 		ttk::labelframe $w.f -padding "1 1" -text " Help > About  "
@@ -454,8 +497,9 @@ proc menu_implement_functions {} {
 		
 		# insert text:
 		set mlw 40	;# maximum line width
-		.about.f.t insert 1.0 \
-		"program: $::app(name)\nversion: $::app(version)\n"
+		.about.f.t insert 1.0 "program: $::app(name).tcl\n"
+		.about.f.t insert end "version: $::app(version)\n"
+		.about.f.t insert end "author:  Robert van Lierop\n"
 		foreach line $::LISTtodo {	set lw [string length $line]
 			if {$mlw < $lw} {set mlw $lw};	.about.f.t insert end "$line\n"
 		};	if {$mlw > 80} {set mlw 80}
@@ -466,30 +510,6 @@ proc menu_implement_functions {} {
 		wm resizable .about 0 1
 	}
 }
-
-
-# LOG =========================================================================
-proc log_time {} {	set t [clock milliseconds]
-	set f [expr {($t%1000+50)/10%100}];	set t [expr {$t/1000}]
-	set r [clock format $t -format %T],[format %02d $f];	# ex. 08:03:14,09
-}
-proc log_record {data {is_tx 0} } {
-	return [log_time][expr {$is_tx ? " > " : " < "}]$data
-}
-proc log_start {fname} {
-	puts $fname
-	if {$::cfg(Log_ena)} {
-		set dt [clock format [clock seconds] -format "%d/%m/%Y %T"]
-		set record "##### varGUI log started $dt #####\n"
-		if {$::cfg(Log_app)} {fappend $fname $record} {fwrite $fname $record}
-	};	set ::cfg(Logfile) $fname
-}
-proc log_append {record} {
-	if {[array names ::cfg Logfile] ne ""} {
-		fappend $::cfg(Logfile) $record
-	}
-}
-
 
 # SERIAL ======================================================================
 # https://wiki.tcl-lang.org/page/Serial+Port
@@ -510,55 +530,40 @@ proc Hwserial {} {;# https://wiki.tcl-lang.org/page/serial+ports+on+Windows
 }
 
 proc Hwserial_rcv fh {
-	while {[chan gets $fh line] >= 0} {
-		puts $line
+	while {[chan gets $fh line] >= 0} {;#	puts $line
+# 		if {[info procs _history_insert] eq ""} {continue}
 		_history_insert $line 0
-		if {![info exists ::cfg(Logfile)]} {continue}
-		if {![info exists ::cfg(Log_ena)]} {continue}
-		if {!$::cfg(Log_ena)} {continue}
+		if {[info procs log_record] eq ""
+		||  [info procs log_append] eq ""} {continue}
 		set record [log_record [string map {\r {} \n {} } $line] 0] 
 		log_append $record
 	}
 }
-
 proc Hwserial_connect {port baudset callback} {
-	set fh [open $port r+]
-	set ::cfg(Ser_fh) $fh
+	# http://www.tcl.tk/man/tcl8.5/TclCmd/open.htm#M22
+	# http://www.tcl.tk/man/tcl8.5/TclCmd/fconfigure.htm
+	# http://www.tcl.tk/man/tcl8.5/TclCmd/fileevent.htm
+	set ::cfg(Ser_fh) [set fh [open $port r+] ]
+	fconfigure $fh -mode $baudset
 
-	# non-blocking needs event loop, so invoke vwait somewhere
-	fconfigure $fh -blocking 0 -mode $baudset
-
-	# none = each character sent, no buffersize needed
-	# line = send at \n
-	# full = send at flush command
-	fconfigure $fh -buffering none;# -buffersize 1024 
-
-	# for now, use the default, set code [encoding system]
-#	fconfigure $fh -encoding binary
-
-	# for working with DOS file systems:
-#	fconfigure $fh -eofchar \x1a
-
-	fconfigure $fh -translation binary ;# auto;# cr ;# crlf ;# lf ;# 
+	fconfigure $fh -blocking 0 -buffering none \
+		-translation binary ;# auto;# cr ;# crlf ;# lf ;#
 			
 	fileevent $fh readable [list $callback $fh]
 }
 proc Hwserial_disconnect {} {
 	if [info exists ::cfg(Ser_fh)] {
 		close $::cfg(Ser_fh)
-		after 25 [unset ::cfg(Ser_fh)]
+		unset ::cfg(Ser_fh)
 	}		
 }
-proc xmit {args} {
-	set line [join $args]\n 
+proc Hwserial_transmit {args} {	set line [join $args]\n 
 	_history_insert $line 1
 	if [info exists ::cfg(Ser_fh)] {
-		if {[info exists ::cfg(Logfile)]
-		&&	[info exists ::cfg(Log_ena)]} {
-			if {$::cfg(Log_ena)} {
-				set record [log_record [string map {\r {} \n {} } $line] 1] 
-				log_append $record
-			}
+		if {[info procs log_record] ne ""
+		&&  [info procs log_append] ne ""} {
+			set record [log_record [string map {\r {} \n {} } $line] 1] 
+			log_append $record
 		}
 		puts $::cfg(Ser_fh) $line
 		flush $::cfg(Ser_fh)
@@ -578,5 +583,5 @@ proc program_exit {} {
 
 data_init
 gui_init
-menu_implement_functions
+menu_implement
 vwait forever
