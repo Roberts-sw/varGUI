@@ -9,6 +9,21 @@ Article: -.
 Owner: Roberts-sw.
 
 Changes:
+- 2-12-2020 v0.4
+  - Arduino boards likely have a capacitor in series with the RTSn-pin of the
+    TTL-232R interface (pin 6, green wire), connected to the pull-up resistor
+    of the ucon reset pin.
+    Connecting to this interface with RTS on will reset the board because the
+    combination of both components will generate a pulse from the resulting
+    low level at interface pin 6.
+    A board without the series capacitor will stay in reset with RTS on,
+    unless RTS is set to off (high level at the interface).
+  - added ::cfg(Ser_rts) to accomodate on-off setting of RTS.
+  - Hwserial_connect sets RTS-pin and clears it after 250 ms if ::cfg(Ser_rts)
+    is known and has a boolean false value
+  - _cfg_ser_ok creates the variable with value 1 if it doesn't exist, so for
+    a toggle its checkbutton needs to be cleared.
+
 - 29-11-2020 v0.3
   - renamed menu_implement_functions to menu_implement
   - section LOG removed, routines moved to section DATA

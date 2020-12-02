@@ -13,7 +13,7 @@ proc data_init {} {
 	# ::app ::cfg  
 	array set ::app {
 		name varGUI
-		version 0.3
+		version 0.4
 		cols	{1 2 3 4 5 6 7 8 9 10 11 12}
 		rows	{--- Shift- Control- Alt-}
 	}
@@ -388,6 +388,7 @@ proc menu_implement {} {
 		foreach r {1 2 3 4} {set n [lindex $::LISTcfg_ser_defs $r 1]
 			append res [.term.f.$n get],
 		};	set ::cfg(Ser_set) [string trimright $res ,]
+		if {"alternate" eq [.term.f.rts state]} {set ::cfg(Ser_rts) 1}
 		if {"NONE" ne $::cfg(Ser_port)} {
 			# connect with port settings callback 
 			Hwserial_connect $::cfg(Ser_port) $::cfg(Ser_set) Hwserial_rcv
@@ -412,6 +413,9 @@ proc menu_implement {} {
 				grid $w.$cbb -row $r -column 1 -pady 3 -columnspan 2
 			}
 		};	incr r
+		# checkbutton RTS_on below labels, other buttons below entry		
+		grid [ttk::checkbutton $w.rts -width -7 -text "RTS on" \
+				-onvalue 1 -variable ::cfg(Ser_rts)] -row $r -column 0
 		foreach {c lb cmd} {
 		1 cancel {unset ::ports; destroy .term}
 		2 ok     {_cfg_ser_ok; destroy .term}
@@ -546,9 +550,16 @@ proc Hwserial_connect {port baudset callback} {
 	set ::cfg(Ser_fh) [set fh [open $port r+] ]
 	fconfigure $fh -mode $baudset
 
-	fconfigure $fh -blocking 0 -buffering none \
+	fconfigure $fh -blocking 0 -buffering none -ttycontrol {RTS on}\
 		-translation binary ;# auto;# cr ;# crlf ;# lf ;#
-			
+
+	if [info exists ::cfg(Ser_rts)] {
+		if {!$::cfg(Ser_rts)} {
+			after 250 [fconfigure $::cfg(Ser_fh) -ttycontrol {RTS off}]
+		}
+	}
+
+
 	fileevent $fh readable [list $callback $fh]
 }
 proc Hwserial_disconnect {} {
@@ -572,13 +583,7 @@ proc Hwserial_transmit {args} {	set line [join $args]\n
 
 # MAIN ========================================================================
 proc program_exit {} {
-	if [info exists ::cfg(Ser_fh)] {
-		close $::cfg(Ser_fh)
-		puts "Closed connection with handle $::cfg(Ser_fh)"
-		while {1} {
-			after 5000 [break]
-		}
-	}
+	if [info exists ::cfg(Ser_fh)] {close $::cfg(Ser_fh); unset ::cfg(Ser_fh)}
 }
 
 data_init
