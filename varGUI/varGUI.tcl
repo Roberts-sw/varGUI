@@ -13,7 +13,7 @@ proc data_init {} {
 	# ::app ::cfg  
 	array set ::app {
 		name varGUI
-		version 0.4
+		version 0.5
 		cols	{1 2 3 4 5 6 7 8 9 10 11 12}
 		rows	{--- Shift- Control- Alt-}
 	}
@@ -49,7 +49,13 @@ proc data_init {} {
 		{4 data_bits readonly {8} } 
 		{5 stop_bits readonly {1 2} }
 	}
-
+	proc cfg_fn_def {key mod} {
+		if {$key ni $::app(cols)} {return}
+		if {$mod && $mod <= [llength $::app(rows)]} {
+			set ::cfg(F$key,$mod) "-- F$key --"
+			set ::cfg(F$key,$mod,m) ""
+		}
+	}
 	proc data_rd {_arr data} {	upvar $_arr arr;
 		foreach line [split $data \n] {
 			if {"" eq $line} {continue}
@@ -144,16 +150,35 @@ proc gui_init {} {
 			.f.e delete 0 end;	.f.e insert end $line;	focus .f.e
 		}
 	}	
-	proc _Fn_edit {col row x y} {
-		if {4 == $row} {switch -- $col 1 return 4 return}
-		tk_popup .popup [expr $x+30] $y 0;	update
-		if {[array names ::app Popup_value] ne ""} {
-			switch -- $::app(Popup_value) 0 {
-				set ::cfg(F$col,$row) "-- F$col --"
-				set ::cfg(F$col,$row,m) ""
-			}
-			unset ::app(Popup_value)
+	proc _Fn_key_edit {key row x y} {
+		if {4 == $row} {switch -- $key 1 return 4 return}
+		# window with title describing key
+		set w .label;wm title [toplevel $w] "   Fn key edit"
+		foreach c {1 3} t {label message} {
+			grid [ttk::label $w.lbl$c,0 -width -5 -text $t] -row 0 -column $c
 		}
+		grid [ttk::label $w.lbl$key -width -1 -text F$key] -column 0 -row 1 -padx 5
+		grid [ttk::entry $w.e$key   -width 10] -column 1 -row 1 -padx 5 -pady 3
+		grid [ttk::entry $w.e$key,m -width 38] -column 2 -row 1 -padx 5\
+			-columnspan 3
+		grid [ttk::button $w.mod -text [lindex $::app(rows) $row-1] \
+			-state disabled -width 9] -column 1 -row 2 -pady 5 -sticky ns
+		foreach k {3 4} t {default ok} {
+			ttk::button $w.$t -text [string totitle $t] -width 9
+			grid $w.$t -column $k -row 2 -pady 5 -sticky ns
+		};	_edit_fn_set $w $key $row
+
+		$w.default configure -command "cfg_fn_def $key $row;\
+				_edit_fn_set $w $key $row;destroy $w"	
+		$w.ok configure -command "_edit_fn_get $w $key $row;destroy $w"
+		wm resizable $w 0 0
+		focus $w.ok
+		wm geometry $w +$x+$y
+	}
+	proc _history_clear {} {
+		.f.history.t configure -state normal
+		.f.history.t delete "1.0" end
+		.f.history.t configure -state disabled
 	}
 	proc _history_insert {args} {
 		set line {*}[lrange $args 0 end-1]
@@ -177,7 +202,7 @@ proc gui_init {} {
 	# menu: 2 levels with default action command in submenu -------------------
 	. config -menu [menu .mnu]
 	foreach {m u submenu} {
-	file 0 {new 0 open 0 save 0 save_as 1 ... - exit 1}
+	file 0 {new 0 open 0 save 0 save_as 1 ... - quit 0}
 	edit 0 {fn_keys 0} 
 	config 0 {serial 0 logging 0}
 	help 0 {about 0}
@@ -186,22 +211,34 @@ proc gui_init {} {
 		foreach {s u} $submenu {
 			if {"-" eq $u} {.mnu.$m add separator; continue}
 			set cmd [join [list $m $s] _]
-			proc $cmd {} "_msg_box $cmd"  
+			proc $cmd {} "_msg_box $cmd"
 			.mnu.$m add command -label [string totitle [split $s _] ] \
 					-underline $u -command $cmd
 			# example: File > Save as has cmd file_save_as, which ...
-			# ... defaults to alert: "file_save_as"\nto be implemented 
+			# ... defaults to alert: "file_save_as"\nto be implemented
 		}
 	}
+	.mnu.file entryconfigure 1 -accelerator Ctrl-o
+	.mnu.file entryconfigure 2 -accelerator Ctrl-s
+	.mnu.file entryconfigure 5 -accelerator Ctrl-q
+	.mnu.edit entryconfigure 0 -accelerator Ctrl-e
+	.mnu.config entryconfigure 0 -accelerator Ctrl-r
+	.mnu.config entryconfigure 1 -accelerator Ctrl-l
+	bind . <Control-o> ".mnu.file invoke 1" 
+	bind . <Control-s> ".mnu.file invoke 2" 
+	bind . <Control-q> ".mnu.file invoke 5" 
+	bind . <Control-e> ".mnu.edit invoke 0" 
+	bind . <Control-r> ".mnu.config invoke 0" 
+	bind . <Control-l> ".mnu.config invoke 1" 
 
 	# frame for window contents -----------------------------------------------
 	grid [ttk::frame .f -padding "1 1"] -row 0 -column 0 -sticky news
 
 	# popup menu on right mouseclick for Function keys
-	set m [menu .popup -tearoff 0]
-	$m add command -command "set ::app(Popup_value) 0" -label "default settings"
-# 	$m add command -command "set ::app(Popup_value) 1" -label "edit label"
-# 	$m add command -command "set ::app(Popup_value) 2" -label "edit message"
+# 	set m [menu .popup -tearoff 0]
+# 	$m add command -command "set ::app(Popup_value) 0" -label "default settings"
+# 	$m add command -command "set ::app(Popup_value) 1" -label edit
+#	$m add command -command "set ::app(Popup_value) 2" -label "edit message"
 
 	# Fn-key table, columns 1-12 scaling in width -----------------------------
 	# column headers: row with Fn names
@@ -221,13 +258,14 @@ proc gui_init {} {
 			ttk::button .f.b$c,$r -textvar ::cfg(F$c,$r) \
 					-command [list _Fn_send $c $r]
 			grid .f.b$c,$r -sticky ew -column $c -row $r
-			set ::cfg(F$c,$r) "-- F$c --"
-			set ::cfg(F$c,$r,m) ""
+			cfg_fn_def $c $r
+# 			set ::cfg(F$c,$r) "-- F$c --"
+# 			set ::cfg(F$c,$r,m) ""
 			if {1 == $r} {
-				bind . <F$c> [list _Fn_send $c $r]
-			} {	bind . <$hd\F$c> [list _Fn_send $c $r]
+				bind . <F$c> "_Fn_send $c $r"
+			} {	bind . <$hd\F$c> "_Fn_send $c $r"
 			};#	.f.b$c,$r configure -command [list _Fn_send $c $r]
-			bind .f.b$c,$r <Button-3> "_Fn_edit $c $r %X %Y"
+			bind .f.b$c,$r <Button-3> "_Fn_key_edit $c $r %X %Y"
 		}
 	}
 	# todo: https://wiki.tcl-lang.org/page/console+platform+portability
@@ -245,12 +283,13 @@ proc gui_init {} {
 	}	 
 
 	# message entry -----------------------------------------------------------
-	incr r; 
+	incr r;
+	set span [expr {$::FnCOLS - 1}]  
 	grid [ttk::entry .f.e] -sticky ew -column 1 -row $r -padx 1 \
-			 -columnspan $::FnCOLS
+			 -columnspan $span;#$::FnCOLS
 	.f.e insert end "info commands"
-	# ttk::button .f.b$r,$::FnCOLS -text assign
-	# grid .f.b$r,$::FnCOLS -sticky ew -column $::FnCOLS -row $r
+	ttk::button .f.b$r,$::FnCOLS -text "clear history" -command "_history_clear"
+	grid .f.b$r,$::FnCOLS -sticky ew -column $::FnCOLS -row $r
 
 	# message history with slider ---------------------------------------------
 	incr r
@@ -291,10 +330,7 @@ proc menu_implement {} {
 			fwrite $fname [data_wr ::cfg]
 		}
 	}
-	proc file_exit {}    {program_exit; exit}
 	proc file_new {}     {_file_save_app_and_cfg}
-	proc file_save {}    {_file_save_app_and_cfg}
-	proc file_save_as {} {_file_save_app_and_cfg}
 	proc file_open {} {
 		lassign [f_dir_name ::app(cfg) cfg] fdir fname
 		set fname [tk_getOpenFile -filetypes {{{config files} {.cfg}}} \
@@ -318,31 +354,37 @@ proc menu_implement {} {
 			Hwserial_connect $::cfg(Ser_port) $::cfg(Ser_set) Hwserial_rcv
 		}
 	}
+	proc file_quit {}    {program_exit; exit}
+	proc file_save {}    {_file_save_app_and_cfg}
+	proc file_save_as {} {_file_save_app_and_cfg}
 
 	# menu edit_* -------------------------------------------------------------
-	proc _edit_fn_get {mod} {
-		# store values from entry fields
+	proc _edit_fn_get {win key mod} {	;# from entries
+		if {![winfo exists $win] || $key ni $::app(cols)} {return}
+		if {$mod && $mod <= [llength $::app(rows)]} {set w $win.e$key
+			set ::cfg(F$key,$mod)   [string map {\n \\n} [$w   get]]
+			set ::cfg(F$key,$mod,m) [string map {\n \\n} [$w,m get]]
+		}
+	}
+	proc _edit_fn_set {win key mod} {	;# into entries
+		if {![winfo exists $win] || $key ni $::app(cols)} {return}
 		if {$mod && $mod <= [llength $::app(rows)]} {
-			foreach k $::app(cols) {	set w .keys.f.e$k
-				set ::cfg(F$k,$mod)   [string map {\n \\n} [$w   get]]
-				set ::cfg(F$k,$mod,m) [string map {\n \\n} [$w,m get]]
-			}
+			set w $win.e$key
+			$w   delete 0 end; $w   insert end $::cfg(F$key,$mod)
+			$w,m delete 0 end; $w,m insert end $::cfg(F$key,$mod,m)
 		}
 	}
 	proc _edit_fn_populate {_row} {	upvar $_row r
 		# store values, replace with values from new row, change sel-key text
-		_edit_fn_get $r
+		foreach key $::app(cols) {_edit_fn_get .keys.f $key $r}		
 		if {[llength $::app(rows)] < [incr r]} {set r 1}
-		foreach k $::app(cols) {	set w .keys.f.e$k
-			$w   delete 0 end; $w   insert end $::cfg(F$k,$r)
-			$w,m delete 0 end; $w,m insert end $::cfg(F$k,$r,m)
-		}
+		foreach k $::app(cols) {_edit_fn_set .keys.f $k $r}
 		.keys.f.sel configure -text [lindex $::app(rows) $r-1]
 		focus .keys.f.sel
 	}
 	proc _edit_fn_ok {mod} {
 		# store values and quit menu
-		_edit_fn_get $mod
+		foreach key $::app(cols) {_edit_fn_get .keys.f $key $mod}		
 		destroy .keys
 	}
 	proc edit_fn_keys {} {
@@ -427,7 +469,7 @@ proc menu_implement {} {
 		set ::ports NONE;	# lappend ::ports [list [Hwserial]]
 		foreach port [Hwserial] {lappend ::ports $port}
 		if {![info exists ::cfg(Ser_port)]} {set ::cfg(Ser_port) NONE}
-		if {![info exists ::cfg(Ser_set)]} {set ::cfg(Ser_set) 9600,n,8,2}
+		if {![info exists ::cfg(Ser_set)]} {set ::cfg(Ser_set) 115200,n,8,2}
 		$w.port configure -values [lsort -unique [join $::ports]]
 		$w.port set $::cfg(Ser_port);
 		foreach r {1 2 3 4} v [split $::cfg(Ser_set) ,] {
@@ -535,11 +577,16 @@ proc Hwserial {} {;# https://wiki.tcl-lang.org/page/serial+ports+on+Windows
 
 proc Hwserial_rcv fh {
 	while {[chan gets $fh line] >= 0} {;#	puts $line
-# 		if {[info procs _history_insert] eq ""} {continue}
-		_history_insert $line 0
+		set stripped [string map {\r {} \n {} } $line] 
+		_history_insert $stripped\n 0
+#		_history_insert $line 0
+
+
 		if {[info procs log_record] eq ""
 		||  [info procs log_append] eq ""} {continue}
-		set record [log_record [string map {\r {} \n {} } $line] 0] 
+#		set record [log_record [$stripped] 0]
+		set record [log_record [string map {\r {} \n {} } $line] 0]
+ 
 		log_append $record
 	}
 }
@@ -558,7 +605,6 @@ proc Hwserial_connect {port baudset callback} {
 			after 250 [fconfigure $::cfg(Ser_fh) -ttycontrol {RTS off}]
 		}
 	}
-
 
 	fileevent $fh readable [list $callback $fh]
 }
