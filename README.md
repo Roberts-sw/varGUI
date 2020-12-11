@@ -9,6 +9,11 @@ Article: -.
 Owner: Roberts-sw.
 
 Changes:
+- 11-12-2020 v0.5
+  - added accelerator keys to most menu items
+  - mouse right-click to change individual Fn key settings: call _Fn_key_edit
+  - added cfg_fn_def to populate individual default Fn key settings
+
 - 2-12-2020 v0.4
   - Arduino boards likely have a capacitor in series with the RTSn-pin of the
     TTL-232R interface (pin 6, green wire), connected to the pull-up resistor
