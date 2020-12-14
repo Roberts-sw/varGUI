@@ -13,7 +13,7 @@ proc data_init {} {
 	# ::app ::cfg  
 	array set ::app {
 		name varGUI
-		version 0.5
+		version 0.6
 		cols	{1 2 3 4 5 6 7 8 9 10 11 12}
 		rows	{--- Shift- Control- Alt-}
 	}
@@ -428,7 +428,9 @@ proc menu_implement {} {
 		Hwserial_disconnect
 		set ::cfg(Ser_port) [.term.f.port get] 
 		foreach r {1 2 3 4} {set n [lindex $::LISTcfg_ser_defs $r 1]
-			append res [.term.f.$n get],
+			if {2==$r} {append res [string index [.term.f.$n get] 0],} else {
+				append res [.term.f.$n get],
+			}
 		};	set ::cfg(Ser_set) [string trimright $res ,]
 		if {"alternate" eq [.term.f.rts state]} {set ::cfg(Ser_rts) 1}
 		if {"NONE" ne $::cfg(Ser_port)} {
