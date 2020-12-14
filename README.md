@@ -9,6 +9,9 @@ Article: -.
 Owner: Roberts-sw.
 
 Changes:
+- 14-12-2020 v0.6
+  - corrected parity setting to take only first letter from one of `none even odd`.
+
 - 11-12-2020 v0.5
   - added accelerator keys to most menu items
   - mouse right-click to change individual Fn key settings: call _Fn_key_edit
