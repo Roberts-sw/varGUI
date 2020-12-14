@@ -18,7 +18,7 @@ proc data_init {} {
 		rows	{--- Shift- Control- Alt-}
 	}
 	array set ::cfg {Log_app 1 Log_ena 1} 
-	set ::LISTtodo {
+	set ::LISTtodo {"see:     https://github.com/Roberts-sw/varGUI"
 "" "short manual:"
 	"The varGUI.ini file overrides the default application settings"
 	"  and contains the name of the last used .cfg file."
