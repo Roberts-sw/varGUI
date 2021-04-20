@@ -5,7 +5,7 @@ exec wish "$0" "$@"
 # http://www.tcl.tk/man/tcl8.5/
 package require Tcl 8.5		;# chan lassign
 package require Tk 8.5		;# ttk::
-package require registry	;# 
+#package require registry	;# 
 # wm withdraw .
 
 # DATA ========================================================================
@@ -13,7 +13,7 @@ proc data_init {} {
 	# ::app ::cfg  
 	array set ::app {
 		name varGUI
-		version 0.6
+		version 0.7
 		cols	{1 2 3 4 5 6 7 8 9 10 11 12}
 		rows	{--- Shift- Control- Alt-}
 	}
@@ -52,7 +52,7 @@ proc data_init {} {
 	proc cfg_fn_def {key mod} {
 		if {$key ni $::app(cols)} {return}
 		if {$mod && $mod <= [llength $::app(rows)]} {
-			set ::cfg(F$key,$mod) "-- F$key --"
+			set ::cfg(F$key,$mod) "   -- F$key --   "
 			set ::cfg(F$key,$mod,m) ""
 		}
 	}
@@ -158,7 +158,7 @@ proc gui_init {} {
 			grid [ttk::label $w.lbl$c,0 -width -5 -text $t] -row 0 -column $c
 		}
 		grid [ttk::label $w.lbl$key -width -1 -text F$key] -column 0 -row 1 -padx 5
-		grid [ttk::entry $w.e$key   -width 10] -column 1 -row 1 -padx 5 -pady 3
+		grid [ttk::entry $w.e$key   -width 15] -column 1 -row 1 -padx 5 -pady 3
 		grid [ttk::entry $w.e$key,m -width 38] -column 2 -row 1 -padx 5\
 			-columnspan 3
 		grid [ttk::button $w.mod -text [lindex $::app(rows) $row-1] \
@@ -343,7 +343,9 @@ proc menu_implement {} {
 			if {"F" eq [string index $n 0]
 			&&	"m" ne [string index $n end]} {
 				set key [string range $n 1 end]
-				.f.b$key configure -textvar ::cfg($n)
+				if [winfo exists .f.b$key] {
+					.f.b$key configure -textvar ::cfg($n)
+				}
 			}
 		}
 		if {[array names ::cfg Logfile] ne ""} {log_start $::cfg(Logfile)}
@@ -410,7 +412,7 @@ proc menu_implement {} {
 		# rows: header text message, last row: buttons
 		foreach r $::app(cols) {
 			grid [ttk::label $w.lbl$r -width -1 -text F$r] -column 0 -row $r
-			grid [ttk::entry $w.e$r -width 12] -column 1 -row $r -padx 5 -pady 3
+			grid [ttk::entry $w.e$r -width 15] -column 1 -row $r -padx 5 -pady 3
 			grid [ttk::entry $w.e$r,m -width 48] -column 2 -row $r -padx 5
 		};	incr r 
 		grid $w.sel -column 1 -row $r -pady 5
