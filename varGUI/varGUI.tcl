@@ -108,7 +108,7 @@ proc data_init {} {
 		list [file dirname $fname] [file tail $fname]
 	}
 	proc log_time {} {	set t [clock milliseconds]
-		set f [expr {($t%1000+50)/10%100}];	set t [expr {$t/1000}]
+		set f [expr {$t%1000/10}];	set t [expr {$t/1000}]	;# 6 aug 2021
 		set r [clock format $t -format %T],[format %02d $f];	# ex. 08:03:14,09
 	}
 	proc log_record {data {is_tx 0} } {
