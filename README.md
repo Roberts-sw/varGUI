@@ -9,12 +9,14 @@ Article: -.
 Owner: Roberts-sw.
 
 Changes:
-- 20-04-2020 v 0.7
+- 06-08-2021 v0.7
+  - corrected log timestamp
+- 20-04-2021 v0.7
   - changed default function key label width to 15
   - made it possible to use less than 12 Fn keys. As an example restrict to 10
     by deleting cols 11 and 12 from file "varGUI.ini".
 
-- 14-12-2020 v 0.6
+- 14-12-2020 v0.6
   - corrected parity setting to take only first letter from one of `none even odd`.
 
 - 11-12-2020 v0.5
