@@ -13,7 +13,7 @@ proc data_init {} {
 	# ::app ::cfg  
 	array set ::app {
 		name varGUI
-		version 0.7
+		version 0.8
 		cols	{1 2 3 4 5 6 7 8 9 10 11 12}
 		rows	{--- Shift- Control- Alt-}
 	}
@@ -48,6 +48,8 @@ proc data_init {} {
 		{3 parity    readonly {none even odd} }
 		{4 data_bits readonly {8} } 
 		{5 stop_bits readonly {1 2} }
+		{6 line_end  readonly {LF CR_LF} }
+		{7 crc       readonly {crc.8003.B NONE} } 
 	}
 	proc cfg_fn_def {key mod} {
 		if {$key ni $::app(cols)} {return}
@@ -146,7 +148,13 @@ proc gui_init {} {
 	proc _Fn_send {col mod} {
 		set line [join $::cfg(F$col,$mod,m)]					;#puts $line
 		if {$line eq ""} {return} 
-		if {[string index $line end] eq "\n"} {Hwserial_transmit $line} {
+		if {[string index $line end] eq "\n"} {
+			while {[set i [string first "\n" $line]]>=0} {
+				# piggy-back commands ending with \n
+				Hwserial_transmit [string range $line 0 $i+1]
+				set line [string range $line $i+2 end]
+			}
+		} else {
 			.f.e delete 0 end;	.f.e insert end $line;	focus .f.e
 		}
 	}	
@@ -261,9 +269,10 @@ proc gui_init {} {
 			cfg_fn_def $c $r
 # 			set ::cfg(F$c,$r) "-- F$c --"
 # 			set ::cfg(F$c,$r,m) ""
+			# https://stackoverflow.com/questions/23749747/how-to-unbind-default-bindings-from-a-widget
 			if {1 == $r} {
-				bind . <F$c> "_Fn_send $c $r"
-			} {	bind . <$hd\F$c> "_Fn_send $c $r"
+				bind . <F$c> "_Fn_send $c $r; break"
+			} {	bind . <$hd\F$c> "_Fn_send $c $r; break"
 			};#	.f.b$c,$r configure -command [list _Fn_send $c $r]
 			bind .f.b$c,$r <Button-3> "_Fn_key_edit $c $r %X %Y"
 		}
@@ -352,7 +361,8 @@ proc menu_implement {} {
 		if {[array names ::cfg Ser_port] eq ""} {return}
 		if {[array names ::cfg Ser_set] eq ""} {return}
 		if {"NONE" ne $::cfg(Ser_port)} {
-			# connect with port settings callback 
+			# connect with port settings callback
+			Hwserial_disconnect 
 			Hwserial_connect $::cfg(Ser_port) $::cfg(Ser_set) Hwserial_rcv
 		}
 	}
@@ -428,12 +438,20 @@ proc menu_implement {} {
 		if ![winfo exists .term.f] return
 		# close previous serial port, gather new settings
 		Hwserial_disconnect
-		set ::cfg(Ser_port) [.term.f.port get] 
-		foreach r {1 2 3 4} {set n [lindex $::LISTcfg_ser_defs $r 1]
-			if {2==$r} {append res [string index [.term.f.$n get] 0],} else {
-				append res [.term.f.$n get],
+		foreach r {0 1 2 3 4 5 6} {
+			set n [lindex $::LISTcfg_ser_defs $r 1]
+			switch -- $r {
+			2	{	append res [string index [.term.f.$n get] 0],	}
+			1	-
+			3	-
+			4	{	append res [.term.f.$n get],
+					set ::cfg(Ser_set) [string trimright $res ,]
+				}
+			0	-
+			5	-
+			6	{	set ::cfg(Ser_$n) [.term.f.$n get]	}
 			}
-		};	set ::cfg(Ser_set) [string trimright $res ,]
+		}
 		if {"alternate" eq [.term.f.rts state]} {set ::cfg(Ser_rts) 1}
 		if {"NONE" ne $::cfg(Ser_port)} {
 			# connect with port settings callback 
@@ -474,8 +492,13 @@ proc menu_implement {} {
 		foreach port [Hwserial] {lappend ::ports $port}
 		if {![info exists ::cfg(Ser_port)]} {set ::cfg(Ser_port) NONE}
 		if {![info exists ::cfg(Ser_set)]} {set ::cfg(Ser_set) 115200,n,8,2}
+		if {![info exists ::cfg(Ser_line_end)]} {set ::cfg(Ser_line_end) LF}
+		if {![info exists ::cfg(Ser_crc)]} {set ::cfg(Ser_crc) NONE}
 		$w.port configure -values [lsort -unique [join $::ports]]
-		$w.port set $::cfg(Ser_port);
+		foreach r {0 5 6} {
+			set n [lindex $::LISTcfg_ser_defs $r 1]
+			$w.$n set $::cfg(Ser_$n)
+		}
 		foreach r {1 2 3 4} v [split $::cfg(Ser_set) ,] {
 			set n [lindex $::LISTcfg_ser_defs $r 1]
 			$w.$n set $v
@@ -561,6 +584,54 @@ proc menu_implement {} {
 	}
 }
 
+proc crc.8003.B {start str {show 0}} {
+	# crc   https://github.com/Roberts-sw/crc.tcl
+	# .8003 Koopman notation, generator polynomial = 10000000000000111
+	# .B    Big-Endian data processing
+	# start - CRC-start value, hexadecimal
+	# str - data string
+	# show - show intermediate data
+	scan $start %llx c;
+
+	foreach byte [split $str {}] {
+		#1) add current CRC with data Byte, shifted (polynomial degree - 8)
+		set B [expr {($c>>8)^[scan $byte %c]&255}]
+
+		#2) shift the current CRC 8 bits within the polynomial degree
+		set c [expr {($c<<8 & 0xffff)}]
+	
+		#3) change the CRC by an inlined table per data bit
+		if {$B & 0x80} {set c [expr {$c ^ 0x380}]}
+		if {$B & 0x40} {set c [expr {$c ^ 0x1c0}]}
+		if {$B & 0x20} {set c [expr {$c ^ 0x0e0}]}
+		if {$B & 0x10} {set c [expr {$c ^ 0x070}]}
+		if {$B & 0x08} {set c [expr {$c ^ 0x038}]}
+		if {$B & 0x04} {set c [expr {$c ^ 0x01c}]}
+		if {$B & 0x02} {set c [expr {$c ^ 0x00e}]}
+		if {$B & 0x01} {set c [expr {$c ^ 0x007}]}
+
+		if {$show} {
+			set B [format %02x $B] 
+			append res "'$byte' (^$byte=$B) -> [format %04x $c]\n"
+		} 
+	};	append res [format %04x $c]
+	return $res 
+example:
+	crc.8003.B 0 "@ ";# data bytes (hexadecimal) 40 20 
+	crc 0000000000000000(00000000)  new crc becomes 0x0000, high part 0x00 ...
+	^ B 01000000                    has new data-Byte added in, and checked:
+	     ^00000000000001 11         bit changes crc with 0x1c0, ...      
+	            -----------------   all bits done results in new crc:
+	            00000001 11000000 = 0x01c0
+
+	crc 0000000111000000(00000000)  new crc becomes 0xc000, high part 0x01 ...
+	^ B 00100000                    has new data-Byte added in, and checked:
+	      ^0000000000000 111        bit changes crc with 0x0e0, ...     
+	           ^00000000 00000111   bit changes crc with 0x007, ...
+	            -----------------   all bits done results in new crc:
+	            11000000 11100111 = 0xc0e7
+}
+
 # SERIAL ======================================================================
 # https://wiki.tcl-lang.org/page/Serial+Port
 proc Hwserial {} {;# https://wiki.tcl-lang.org/page/serial+ports+on+Windows
@@ -578,22 +649,6 @@ proc Hwserial {} {;# https://wiki.tcl-lang.org/page/serial+ports+on+Windows
 		set res [glob -nocomplain {/dev/tty0[0-9]} {/dev/ttyU[0-9]}]
 	};	lsort $res
 }
-
-proc Hwserial_rcv fh {
-	while {[chan gets $fh line] >= 0} {;#	puts $line
-		set stripped [string map {\r {} \n {} } $line] 
-		_history_insert $stripped\n 0
-#		_history_insert $line 0
-
-
-		if {[info procs log_record] eq ""
-		||  [info procs log_append] eq ""} {continue}
-#		set record [log_record [$stripped] 0]
-		set record [log_record [string map {\r {} \n {} } $line] 0]
- 
-		log_append $record
-	}
-}
 proc Hwserial_connect {port baudset callback} {
 	# http://www.tcl.tk/man/tcl8.5/TclCmd/open.htm#M22
 	# http://www.tcl.tk/man/tcl8.5/TclCmd/fconfigure.htm
@@ -601,8 +656,11 @@ proc Hwserial_connect {port baudset callback} {
 	set ::cfg(Ser_fh) [set fh [open $port r+] ]
 	fconfigure $fh -mode $baudset
 
-	fconfigure $fh -blocking 0 -buffering none -ttycontrol {RTS on}\
-		-translation binary ;# auto;# cr ;# crlf ;# lf ;#
+	fconfigure $fh -blocking 0 -buffering none -ttycontrol {RTS on}
+	switch -- $::cfg(Ser_line_end) {
+	LF		{fconfigure $fh -translation lf}
+	CR_LF	{fconfigure $fh -translation crlf}
+	}
 
 	if [info exists ::cfg(Ser_rts)] {
 		if {!$::cfg(Ser_rts)} {
@@ -618,20 +676,75 @@ proc Hwserial_disconnect {} {
 		unset ::cfg(Ser_fh)
 	}		
 }
+
+	# RvL 22-04 .. 27-05-2021:
+	# serial port message "@<contents> CRC\n"
+	#	- "@ CRC\n" is used as envelope for message error-detection
+	#	- CRC is calculated from "<contents> ", incl. space before CRC!
+	#	- CRC only used in transmitting, stripped for log on receive
+	# -----------------------------------------------------------------
+proc Hwserial_rcv fh {
+	while {[chan gets $fh line] >= 0} {;#	puts $line
+	# 1. complete line in history
+		_history_insert $line\n 0
+		set stripped $line
+	# 2. strip leading @, and ending space plus CRC
+		switch -- $::cfg(Ser_crc) {
+		crc.8003.B	{
+				set at [string first @ $line]
+				set ls [string last \  $line]
+				set ll [string length  $line] 
+				if {0<=$at && $at<=$ls && $ls==$ll-5} {
+					set stripped [string range $line $at+1 $ll-5]
+				}
+			}
+		default	{}
+		}
+	# 3. log stripped
+		set record [log_record $stripped 0]
+		log_append $record
+	}
+}
 proc Hwserial_transmit {args} {	set line [join $args]\n 
+	# 1. history only as typed
 	_history_insert $line 1
 	if [info exists ::cfg(Ser_fh)] {
-		if {[info procs log_record] ne ""
-		&&  [info procs log_append] ne ""} {
-			set record [log_record [string map {\r {} \n {} } $line] 1] 
+	# 2. exclude \n from and log <contents>
+		set <contents> [string map {\r {} \n {} } $line]
+		set record [log_record [set <contents>] 1] 
 			log_append $record
+	# 3. calculate CRC from contents including separating space
+	# 4. precede <contents> with @ and end with crc
+		switch -- $::cfg(Ser_crc) {
+		crc.8003.B	{
+				set crc [ crc.8003.B 0 [append <contents> \ ] ]
+				set <contents> @[append <contents> $crc]
+			}
+		default	{}
 		}
-		puts $::cfg(Ser_fh) $line
+	# 5. send <contents>
+		puts $::cfg(Ser_fh) [set <contents>]
 		flush $::cfg(Ser_fh)
 	} {tk_messageBox -type ok -message "no serial port selected"}
 }
 
 # MAIN ========================================================================
+proc corp name {
+	# http://wiki.tcl.tk/15349
+	if {[info exists ::auto_index($name)]} {
+		set body "# $::auto_index($name)\n"
+	} else {set body ""}
+	append body [info body $name]
+	set argl {}
+	foreach a [info args $name] {
+		if {[info default $name $a def]} {
+			lappend a $def
+		}
+		lappend argl $a
+	}
+	list proc $name $argl $body
+}
+# https://wiki.tcl-lang.org/page/exit
 proc program_exit {} {
 	if [info exists ::cfg(Ser_fh)] {close $::cfg(Ser_fh); unset ::cfg(Ser_fh)}
 }
