@@ -14,6 +14,8 @@ The configuration is divided between two arrays:
 
 #### changes:
 
+- 31-03-2022 v0.8
+  - Hwserial_connect now can open COM10 and higher on Windows
 - 03-03-2022 v0.8
   - re-opening .cfg closes serial port before re-opening it.
   - added piggy-back for commands by including "\n" before new command
