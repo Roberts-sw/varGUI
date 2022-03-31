@@ -653,7 +653,9 @@ proc Hwserial_connect {port baudset callback} {
 	# http://www.tcl.tk/man/tcl8.5/TclCmd/open.htm#M22
 	# http://www.tcl.tk/man/tcl8.5/TclCmd/fconfigure.htm
 	# http://www.tcl.tk/man/tcl8.5/TclCmd/fileevent.htm
-	set ::cfg(Ser_fh) [set fh [open $port r+] ]
+	# https://stackoverflow.com/questions/11775185/open-a-com-port-in-c-with-number-higher-that-9
+#	set ::cfg(Ser_fh) [set fh [open $port r+] ]
+	set ::cfg(Ser_fh) [set fh [open \\\\.\\$port r+] ]
 	fconfigure $fh -mode $baudset
 
 	fconfigure $fh -blocking 0 -buffering none -ttycontrol {RTS on}
